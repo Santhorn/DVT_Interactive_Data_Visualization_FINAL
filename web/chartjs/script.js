@@ -1,4 +1,4 @@
-const CSV="../../data/cleaned/_2568_cleaned.csv",months=["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"],weekdays=["จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์","อาทิตย์"];let data=[],charts={};
+const CSV="https://raw.githubusercontent.com/Santhorn/DVT_Interactive_Data_Visualization_FINAL/main/data/cleaned/_2568_cleaned.csv",months=["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"],weekdays=["จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์","อาทิตย์"];let data=[],charts={};
 function parseDate(x){const d=new Date(x);return d}
 function prep(d){d.Age=+d.Age;d.date=parseDate(d["Dead Date"]);d.month=months[d.date.getMonth()];d.weekday=weekdays[(d.date.getDay()+6)%7];return d}
 function fill(id,vals){const s=document.getElementById(id);s.innerHTML='<option value="ทั้งหมด">ทั้งหมด</option>';vals.forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v;s.appendChild(o)});s.onchange=update}
