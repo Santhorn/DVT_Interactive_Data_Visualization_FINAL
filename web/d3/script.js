@@ -28,7 +28,14 @@ function svgBox(id){const el=document.querySelector("#"+id),w=el.clientWidth,h=e
 function drawLine(arr){
  clear("line"); const {w,h,svg}=svgBox("line"),m={t:20,r:25,b:50,l:50},iw=w-m.l-m.r,ih=h-m.t-m.b;
  const c=Object.fromEntries(months.map(x=>[x,0])); arr.forEach(d=>c[d["เดือนที่เสียชีวิต"]]++);
- const x=d3.scalePoint(months).range([0,iw]), y=d3.scaleLinear().domain([0,d3.max(months,x=>c[x])||1]).nice().range([ih,0]);
+ const x=d3.scalePoint()
+    .domain(months)
+    .range([0,iw]);
+
+const y=d3.scaleLinear()
+    .domain([0,d3.max(months,x=>c[x])||1])
+    .nice()
+    .range([ih,0]);
  const g=svg.append("g").attr("transform",`translate(${m.l},${m.t})`);
  g.append("g").attr("transform",`translate(0,${ih})`).call(d3.axisBottom(x).tickSizeOuter(0)).selectAll("text").attr("transform","rotate(-35)").style("text-anchor","end");
  g.append("g").call(d3.axisLeft(y).ticks(5));
