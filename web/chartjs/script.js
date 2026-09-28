@@ -1,33 +1,40 @@
-const CSV = "../../data/cleaned/_2568_cleaned.csv";
+const CSV = "https://raw.githubusercontent.com/Santhorn/DVT_Interactive_Data_Visualization_FINAL/main/data/cleaned/_2568_cleaned.csv";
 const months = ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
 const weekdays = ["จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์","อาทิตย์"];
 
 let rawData = [];
 let chartInstances = {};
 
-// โหลดและแปลงข้อมูลด้วย PapaParse
-Papa.parse(CSV, {
-  download: true,
-  header: true,
-  skipEmptyLines: true,
-  complete: function(results) {
-    rawData = results.data.map(d => {
-      const dateObj = new Date(d["Dead Date"]);
-      return {
-        ...d,
-        Age: Number(d["Age"]) || 0,
-        "Dead Date": dateObj,
-        "เดือนที่เสียชีวิต": !isNaN(dateObj) ? months[dateObj.getMonth()] : "ไม่ระบุ",
-        "วันในสัปดาห์": !isNaN(dateObj) ? weekdays[(dateObj.getDay() + 6) % 7] : "ไม่ระบุ"
-      };
+// ฟังก์ชันโหลดข้อมูลด้วย fetch + PapaParse เพื่อป้องกัน Error เรื่องการโหลด
+fetch(CSV)
+  .then(response => {
+    if (!response.ok) throw new Error("Network response was not ok: " + response.statusText);
+    return response.text();
+  })
+  .then(csvText => {
+    Papa.parse(csvText, {
+      header: true,
+      skipEmptyLines: true,
+      complete: function(results) {
+        rawData = results.data.map(d => {
+          const dateObj = new Date(d["Dead Date"]);
+          return {
+            ...d,
+            Age: Number(d["Age"]) || 0,
+            "Dead Date": dateObj,
+            "เดือนที่เสียชีวิต": !isNaN(dateObj) ? months[dateObj.getMonth()] : "ไม่ระบุ",
+            "วันในสัปดาห์": !isNaN(dateObj) ? weekdays[(dateObj.getDay() + 6) % 7] : "ไม่ระบุ"
+          };
+        });
+        initFilters();
+        updateDashboard();
+      }
     });
-    initFilters();
-    updateDashboard();
-  },
-  error: function(err) {
-    document.querySelector("#summary").textContent = "โหลดข้อมูลไม่สำเร็จ: " + err;
-  }
-});
+  })
+  .catch(err => {
+    console.error("CSV Load Error:", err);
+    document.querySelector("#summary").innerHTML = `<span style="color:#ef4444; font-weight:bold;">โหลดข้อมูลไม่สำเร็จ: ${err.message}</span>`;
+  });
 
 function initFilters() {
   fillSelect("month", months);
