@@ -107,3 +107,7 @@ Chart.js:
 | 2 | นายดนุวัศ เกษรกอบแก้ว | 68541207056-5 | สมาชิกกลุ่ม |
 
 > หมายเหตุ: บทบาทย่อยของแต่ละคนสามารถแก้ไขให้ตรงกับการทำงานจริงก่อนส่ง
+>
+> AI ที่ใช้ช่วยในการทำงาน 
+chat gpt : https://chatgpt.com/share/6aba6f5c-fce0-83ec-a13b-a7bacfa0c087
+gemmi : https://share.gemini.google/yrjLt6uvyUbO
