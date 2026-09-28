@@ -309,6 +309,3 @@ d3.csv(CSV).then(rows=>{
 }).catch(e=>{
   document.querySelector("#summary").textContent="โหลดข้อมูลไม่สำเร็จ: "+e.message;
 });
-}
-document.querySelector("#reset").onclick=()=>{["month","sex","province","vehicle"].forEach(id=>document.querySelector("#"+id).value="ทั้งหมด");update()};
-d3.csv(CSV).then(rows=>{data=rows.map(normalize);options();update()}).catch(e=>{document.querySelector("#summary").textContent="โหลดข้อมูลไม่สำเร็จ: "+e.message});
