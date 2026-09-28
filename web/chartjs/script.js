@@ -1,273 +1,311 @@
 const CSV="https://raw.githubusercontent.com/Santhorn/DVT_Interactive_Data_Visualization_FINAL/main/data/cleaned/_2568_cleaned.csv";
-const months = ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
-const weekdays = ["จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์","อาทิตย์"];
+const months=["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
+const weekdays=["จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์","อาทิตย์"];
+let data=[], current=[];
 
-let data = [], charts = {};
-
-// พาเลทสีสำหรับ Chart.js (โทนสีส้ม / ม่วง / พาสเทล)
-const primaryColor = "#6366f1";     // Indigo / ม่วงอมฟ้า
-const secondaryColor = "#f97316";   // Orange / ส้ม
-const accentColors = [
-  "#6366f1", "#f97316", "#14b8a6", "#ec4899", 
-  "#8b5cf6", "#f59e0b", "#06b6d4", "#84cc16",
-  "#e11d48", "#3b82f6", "#10b981", "#64748b"
-];
-
-function parseDate(x) { return new Date(x); }
-
-function prep(d) {
-  d.Age = +d.Age;
-  d.date = parseDate(d["Dead Date"]);
-  d.month = months[d.date.getMonth()];
-  d.weekday = weekdays[(d.date.getDay() + 6) % 7];
+function normalize(d){
+  d["Age"]=+d["Age"]; 
+  d["Dead Date"]=new Date(d["Dead Date"]);
+  d["เดือนที่เสียชีวิต"]=months[d["Dead Date"].getMonth()];
+  d["วันในสัปดาห์"]=weekdays[(d["Dead Date"].getDay()+6)%7]; 
   return d;
 }
 
-function fill(id, vals) {
-  const s = document.getElementById(id);
-  s.innerHTML = '<option value="ทั้งหมด">ทั้งหมด</option>';
-  vals.forEach(v => {
-    const o = document.createElement("option");
-    o.value = v;
-    o.textContent = v;
-    s.appendChild(o);
-  });
-  s.onchange = update;
+function fillSelect(id, values){
+  const s=d3.select("#"+id); 
+  s.selectAll("option").remove(); 
+  s.append("option").attr("value","ทั้งหมด").text("ทั้งหมด");
+  values.forEach(v=>s.append("option").attr("value",v).text(v)); 
+  s.on("change",update);
 }
 
-function count(arr, key) {
-  const m = {};
-  arr.forEach(d => {
-    const v = d[key] ?? "ไม่ระบุ";
-    m[v] = (m[v] || 0) + 1;
-  });
-  return Object.entries(m)
-    .map(([label, value]) => ({ label, value }))
-    .sort((a, b) => b.value - a.value);
+function options(){
+  fillSelect("month",months);
+  fillSelect("sex",[...new Set(data.map(d=>d.Sex))].filter(Boolean).sort((a,b)=>a.localeCompare(b,"th")));
+  fillSelect("province",[...new Set(data.map(d=>d["จ.ที่เสียชีวิต"]))].filter(Boolean).sort((a,b)=>a.localeCompare(b,"th")));
+  fillSelect("vehicle",[...new Set(data.map(d=>d["Vehicle Merge Final"]))].filter(Boolean).sort((a,b)=>a.localeCompare(b,"th")));
 }
 
-function filtered() {
-  const m = document.getElementById("month").value,
-        s = document.getElementById("sex").value,
-        p = document.getElementById("province").value,
-        v = document.getElementById("vehicle").value;
-  return data.filter(d => 
-    (m === "ทั้งหมด" || d.month === m) &&
-    (s === "ทั้งหมด" || d.Sex === s) &&
-    (p === "ทั้งหมด" || d["จ.ที่เสียชีวิต"] === p) &&
-    (v === "ทั้งหมด" || d["Vehicle Merge Final"] === v)
-  );
+function filtered(){
+  const m=document.querySelector("#month").value,
+        s=document.querySelector("#sex").value,
+        p=document.querySelector("#province").value,
+        v=document.querySelector("#vehicle").value;
+  return data.filter(d=>(m==="ทั้งหมด"||d["เดือนที่เสียชีวิต"]===m)&&(s==="ทั้งหมด"||d.Sex===s)&&(p==="ทั้งหมด"||d["จ.ที่เสียชีวิต"]===p)&&(v==="ทั้งหมด"||d["Vehicle Merge Final"]===v));
 }
 
-function destroy() {
-  Object.values(charts).forEach(c => c.destroy());
-  charts = {};
+function counts(arr,key){
+  return d3.rollups(arr,v=>v.length,d=>d[key])
+    .map(([label,value])=>({label: label || "ไม่ระบุ", value}))
+    .sort((a,b)=>d3.descending(a.value,b.value));
 }
 
-// ค่ากำหนดพื้นฐานของ Chart.js
-function baseOpts(xTitle = "", yTitle = "") {
-  return {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        display: false
-      },
-      tooltip: {
-        backgroundColor: "#1e293b",
-        titleFont: { size: 13, family: "Arial, sans-serif" },
-        bodyFont: { size: 12, family: "Arial, sans-serif" },
-        padding: 10,
-        cornerRadius: 8,
-        callbacks: {
-          label: function(context) {
-            const val = context.raw || 0;
-            const dataset = context.chart.data.datasets[0].data;
-            const total = dataset.reduce((a, b) => a + b, 0) || 1;
-            const pct = ((val / total) * 100).toFixed(1);
-            return ` จำนวน: ${val.toLocaleString()} ราย (${pct}%)`;
-          }
-        }
-      }
-    },
-    scales: {
-      x: {
-        title: {
-          display: !!xTitle,
-          text: xTitle,
-          color: "#64748b",
-          font: { size: 12, weight: 'bold' }
-        },
-        grid: { display: false }
-      },
-      y: {
-        beginAtZero: true,
-        title: {
-          display: !!yTitle,
-          text: yTitle,
-          color: "#64748b",
-          font: { size: 12, weight: 'bold' }
-        },
-        grid: { color: "#f1f5f9" }
-      }
-    },
-    animation: { duration: 300 }
-  };
+function clear(id){d3.select("#"+id).selectAll("*").remove()}
+
+// -------------------------------------------------------------
+// สร้าง Tooltip Element สำหรับแสดงข้อมูลเมื่อ Hover
+// -------------------------------------------------------------
+let tooltip = d3.select("body").select(".custom-tooltip");
+if (tooltip.empty()) {
+  tooltip = d3.select("body").append("div")
+    .attr("class", "custom-tooltip")
+    .style("position", "absolute")
+    .style("pointer-events", "none")
+    .style("background", "#111827")
+    .style("color", "#fff")
+    .style("padding", "8px 12px")
+    .style("border-radius", "8px")
+    .style("font-size", "13px")
+    .style("box-shadow", "0 4px 12px rgba(0,0,0,0.2)")
+    .style("opacity", 0)
+    .style("z-index", 1000)
+    .style("transition", "opacity 0.15s ease");
 }
 
-function update() {
-  const arr = filtered();
-  document.getElementById("total").textContent = arr.length.toLocaleString();
+function showTooltip(event, htmlContent) {
+  tooltip.html(htmlContent)
+    .style("left", (event.pageX + 15) + "px")
+    .style("top", (event.pageY - 28) + "px")
+    .style("opacity", 1);
+}
+
+function moveTooltip(event) {
+  tooltip.style("left", (event.pageX + 15) + "px")
+    .style("top", (event.pageY - 28) + "px");
+}
+
+function hideTooltip() {
+  tooltip.style("opacity", 0);
+}
+
+function svgBox(id){
+  const el=document.querySelector("#"+id),w=el.clientWidth,h=el.clientHeight;
+  return {el,w,h,svg:d3.select(el).append("svg").attr("width",w).attr("height",h)}
+}
+
+// -------------------------------------------------------------
+// 1. Line Chart (จำนวนผู้เสียชีวิตรายเดือน)
+// -------------------------------------------------------------
+function drawLine(arr){
+  clear("line"); 
+  const {w,h,svg}=svgBox("line");
+  const m={t:30, r:30, b:65, l:60}, iw=w-m.l-m.r, ih=h-m.t-m.b;
+  const c=Object.fromEntries(months.map(x=>[x,0])); 
+  arr.forEach(d=>{ if(c[d["เดือนที่เสียชีวิต"]] !== undefined) c[d["เดือนที่เสียชีวิต"]]++; });
+  const pts=months.map(label=>({label, value:c[label]}));
+
+  const x=d3.scalePoint().domain(months).range([0,iw]); 
+  const y=d3.scaleLinear().domain([0,(d3.max(pts,d=>d.value)||1)*1.15]).nice().range([ih,0]);
+  const g=svg.append("g").attr("transform",`translate(${m.l},${m.t})`);
+
+  // แกน X & Y
+  g.append("g").attr("transform",`translate(0,${ih})`).call(d3.axisBottom(x)).selectAll("text").attr("transform","rotate(-30)").style("text-anchor","end");
+  g.append("g").call(d3.axisLeft(y).ticks(5));
+
+  // ชื่อแกน X & Y
+  svg.append("text").attr("x", m.l + iw/2).attr("y", h - 5).attr("text-anchor","middle").style("font-size","12px").style("fill","#475569").text("เดือน");
+  svg.append("text").attr("transform","rotate(-90)").attr("x", -m.t - ih/2).attr("y", 18).attr("text-anchor","middle").style("font-size","12px").style("fill","#475569").text("จำนวน (ราย)");
+
+  // เส้นกราฟ & พื้นหลัง
+  const area=d3.area().x(d=>x(d.label)).y0(ih).y1(d=>y(d.value)).curve(d3.curveMonotoneX);
+  const line=d3.line().x(d=>x(d.label)).y(d=>y(d.value)).curve(d3.curveMonotoneX);
+
+  g.append("path").datum(pts).attr("fill","#3b82f6").attr("fill-opacity",0.15).attr("d",area);
+  g.append("path").datum(pts).attr("fill","none").attr("stroke","#2563eb").attr("stroke-width",3).attr("d",line);
+
+  // จุดข้อมูล + Interactive Tooltip
+  const totalVal = d3.sum(pts, d => d.value) || 1;
+  g.selectAll("circle").data(pts).join("circle")
+   .attr("cx",d=>x(d.label)).attr("cy",d=>y(d.value)).attr("r",6).attr("fill","#2563eb").attr("stroke","#fff").attr("stroke-width",2)
+   .style("cursor","pointer")
+   .on("mouseover", (event, d) => {
+      d3.select(event.currentTarget).attr("r", 9).attr("fill", "#1d4ed8");
+      const pct = ((d.value / totalVal) * 100).toFixed(1);
+      showTooltip(event, `<b>เดือน:</b> ${d.label}<br/><b>ผู้เสียชีวิต:</b> ${d.value.toLocaleString()} ราย (${pct}%)`);
+   })
+   .on("mousemove", moveTooltip)
+   .on("mouseout", (event) => {
+      d3.select(event.currentTarget).attr("r", 6).attr("fill", "#2563eb");
+      hideTooltip();
+   });
+
+  g.selectAll(".val-label").data(pts).join("text")
+   .attr("x",d=>x(d.label)).attr("y",d=>y(d.value)-10)
+   .attr("text-anchor","middle").style("font-size","10px").style("fill","#1e293b").style("font-weight","bold")
+   .text(d=>d.value > 0 ? d.value.toLocaleString() : "");
+}
+
+// -------------------------------------------------------------
+// 2. Donut Chart (สัดส่วนตามเพศ)
+// -------------------------------------------------------------
+function drawDonut(arr){
+  clear("donut"); 
+  const {w,h,svg}=svgBox("donut");
+  const r=Math.min(w,h)/2 - 40;
+  const g=svg.append("g").attr("transform",`translate(${w/2 - 40},${h/2})`);
+  const rows=counts(arr,"Sex");
   
-  const ages = arr.map(d => d.Age).filter(Number.isFinite);
-  document.getElementById("avgAge").textContent = ages.length 
-    ? (ages.reduce((a, b) => a + b, 0) / ages.length).toFixed(1) 
-    : "-";
+  const color=d3.scaleOrdinal()
+    .domain(["ชาย","หญิง"])
+    .range(["#2563eb", "#ec4899", "#94a3b8"]);
 
-  const p = count(arr, "จ.ที่เสียชีวิต")[0], 
-        v = count(arr, "Vehicle Merge Final")[0];
-  document.getElementById("topProvince").textContent = p?.label || "-";
-  document.getElementById("topVehicle").textContent = v?.label || "-";
+  const pie=d3.pie().value(d=>d.value)(rows);
+  const arc=d3.arc().innerRadius(r*0.55).outerRadius(r);
+  const arcHover=d3.arc().innerRadius(r*0.55).outerRadius(r + 6);
 
-  destroy();
+  const totalVal = arr.length || 1;
 
-  // 1. Line Chart (จำนวนผู้เสียชีวิตรายเดือน)
-  const mc = Object.fromEntries(months.map(x => [x, 0]));
-  arr.forEach(d => { if(mc[d.month] !== undefined) mc[d.month]++; });
-  
-  charts["line"] = new Chart(document.getElementById("line"), {
-    type: "line",
-    data: {
-      labels: months,
-      datasets: [{
-        label: "จำนวนผู้เสียชีวิต",
-        data: months.map(x => mc[x]),
-        borderColor: primaryColor,
-        backgroundColor: "rgba(99, 102, 241, 0.12)",
-        fill: true,
-        tension: 0.35,
-        pointBackgroundColor: primaryColor,
-        pointBorderColor: "#fff",
-        pointHoverRadius: 7,
-        pointRadius: 4
-      }]
-    },
-    options: baseOpts("เดือน", "จำนวน (ราย)")
+  g.selectAll("path").data(pie).join("path")
+   .attr("d",arc)
+   .attr("fill",d=>color(d.data.label))
+   .attr("stroke","#fff").attr("stroke-width",2)
+   .style("cursor","pointer")
+   .on("mouseover", (event, d) => {
+      d3.select(event.currentTarget).attr("d", arcHover);
+      const pct = ((d.data.value / totalVal) * 100).toFixed(1);
+      showTooltip(event, `<b>เพศ:</b> ${d.data.label}<br/><b>จำนวน:</b> ${d.data.value.toLocaleString()} ราย (${pct}%)`);
+   })
+   .on("mousemove", moveTooltip)
+   .on("mouseout", (event) => {
+      d3.select(event.currentTarget).attr("d", arc);
+      hideTooltip();
+   });
+
+  g.append("text").attr("text-anchor","middle").attr("dy","0.3em").attr("font-size","22px").attr("font-weight","bold").attr("fill","#1e293b").text(arr.length.toLocaleString());
+
+  // Legend
+  const legend = svg.append("g").attr("transform", `translate(${w - 90}, ${h/2 - (rows.length*12)})`);
+  rows.forEach((d, i) => {
+    const lg = legend.append("g").attr("transform", `translate(0, ${i * 24})`);
+    lg.append("rect").attr("width", 14).attr("height", 14).attr("rx", 3).attr("fill", color(d.label));
+    lg.append("text").attr("x", 20).attr("y", 12).style("font-size", "12px").style("fill", "#334155").text(`${d.label}`);
   });
-
-  // 2. Donut Chart (สัดส่วนตามเพศ)
-  const sx = count(arr, "Sex");
-  charts["donut"] = new Chart(document.getElementById("donut"), {
-    type: "doughnut",
-    data: {
-      labels: sx.map(x => x.label),
-      datasets: [{
-        data: sx.map(x => x.value),
-        backgroundColor: ["#6366f1", "#ec4899", "#94a3b8"],
-        borderWidth: 2,
-        borderColor: "#ffffff"
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          display: true,
-          position: "right",
-          labels: { font: { size: 12 }, usePointStyle: true }
-        },
-        tooltip: baseOpts().plugins.tooltip
-      }
-    }
-  });
-
-  // 3. Vehicle Bar Chart (ประเภทยานพาหนะ)
-  const vh = count(arr, "Vehicle Merge Final").slice(0, 12);
-  charts["vehicleChart"] = new Chart(document.getElementById("vehicleChart"), {
-    type: "bar",
-    data: {
-      labels: vh.map(x => x.label),
-      datasets: [{
-        data: vh.map(x => x.value),
-        backgroundColor: accentColors,
-        borderRadius: 5
-      }]
-    },
-    options: {
-      ...baseOpts("ยานพาหนะ", "จำนวน (ราย)"),
-      scales: {
-        ...baseOpts("ยานพาหนะ", "จำนวน (ราย)").scales,
-        x: {
-          ticks: { maxRotation: 45, minRotation: 25 },
-          grid: { display: false }
-        }
-      }
-    }
-  });
-
-  // 4. Weekday Bar Chart (วันในสัปดาห์)
-  const wd = weekdays.map(x => ({ label: x, value: arr.filter(d => d.weekday === x).length }));
-  charts["weekday"] = new Chart(document.getElementById("weekday"), {
-    type: "bar",
-    data: {
-      labels: wd.map(x => x.label),
-      datasets: [{
-        data: wd.map(x => x.value),
-        backgroundColor: secondaryColor,
-        borderRadius: 5
-      }]
-    },
-    options: baseOpts("วันในสัปดาห์", "จำนวน (ราย)")
-  });
-
-  // 5. Province Horizontal Bar Chart (10 จังหวัดสูงสุด)
-  const pr = count(arr, "จ.ที่เสียชีวิต").slice(0, 10).reverse();
-  charts["provinceChart"] = new Chart(document.getElementById("provinceChart"), {
-    type: "bar",
-    data: {
-      labels: pr.map(x => x.label),
-      datasets: [{
-        data: pr.map(x => x.value),
-        backgroundColor: accentColors.slice().reverse(),
-        borderRadius: 5
-      }]
-    },
-    options: {
-      indexAxis: "y",
-      ...baseOpts("จำนวนผู้เสียชีวิต (ราย)", "จังหวัด"),
-      scales: {
-        x: {
-          beginAtZero: true,
-          title: { display: true, text: "จำนวนผู้เสียชีวิต (ราย)", color: "#64748b" },
-          grid: { color: "#f1f5f9" }
-        },
-        y: {
-          grid: { display: false }
-        }
-      }
-    }
-  });
-
-  document.getElementById("summary").innerHTML = `ข้อมูลที่เลือกมี <b>${arr.length.toLocaleString()}</b> ราย อายุเฉลี่ย <b>${ages.length ? (ages.reduce((a, b) => a + b, 0) / ages.length).toFixed(1) : "-"}</b> ปี จังหวัดที่พบมากที่สุดคือ <b>${p?.label || "-"}</b> และยานพาหนะที่พบมากที่สุดคือ <b>${v?.label || "-"}</b>`;
 }
 
-document.getElementById("reset").onclick = () => {
-  ["month", "sex", "province", "vehicle"].forEach(id => document.getElementById(id).value = "ทั้งหมด");
+// -------------------------------------------------------------
+// 3. Bar Charts (แท่งตั้ง & แท่งนอน)
+// -------------------------------------------------------------
+function drawBars(id,rows,horizontal=false){
+  clear(id); 
+  const {w,h,svg}=svgBox(id);
+  const m={
+    t: 20, 
+    r: horizontal ? 45 : 20, 
+    b: horizontal ? 45 : 75, 
+    l: horizontal ? 140 : 55
+  }, iw=w-m.l-m.r, ih=h-m.t-m.b;
+
+  rows = rows.slice(0, horizontal ? 10 : 12);
+  const totalVal = d3.sum(rows, d => d.value) || 1;
+
+  const colorScale = d3.scaleOrdinal(d3.schemeTableau10);
+
+  const x = horizontal 
+    ? d3.scaleLinear().domain([0, (d3.max(rows,d=>d.value)||1)*1.15]).nice().range([0,iw])
+    : d3.scaleBand().domain(rows.map(d=>d.label)).range([0,iw]).padding(0.25);
+
+  const y = horizontal 
+    ? d3.scaleBand().domain(rows.map(d=>d.label)).range([0,ih]).padding(0.25)
+    : d3.scaleLinear().domain([0, (d3.max(rows,d=>d.value)||1)*1.15]).nice().range([ih,0]);
+
+  const g=svg.append("g").attr("transform",`translate(${m.l},${m.t})`);
+
+  if(horizontal){
+    // แกน X & Y (Horizontal)
+    g.append("g").call(d3.axisLeft(y));
+    g.append("g").attr("transform",`translate(0,${ih})`).call(d3.axisBottom(x).ticks(5));
+
+    // ชื่อแกน
+    svg.append("text").attr("x", m.l + iw/2).attr("y", h - 8).attr("text-anchor","middle").style("font-size","12px").style("fill","#475569").text("จำนวนผู้เสียชีวิต (ราย)");
+    
+    // แท่งกราฟ + Hover
+    g.selectAll(".bar").data(rows).join("rect")
+     .attr("class","bar").attr("x",0).attr("y",d=>y(d.label))
+     .attr("width",d=>x(d.value)).attr("height",y.bandwidth())
+     .attr("fill",(d,i)=>colorScale(i)).attr("rx", 3)
+     .style("cursor","pointer")
+     .on("mouseover", (event, d) => {
+        d3.select(event.currentTarget).style("opacity", 0.8);
+        const pct = ((d.value / totalVal) * 100).toFixed(1);
+        showTooltip(event, `<b>${d.label}:</b> ${d.value.toLocaleString()} ราย (${pct}%)`);
+     })
+     .on("mousemove", moveTooltip)
+     .on("mouseout", (event) => {
+        d3.select(event.currentTarget).style("opacity", 1);
+        hideTooltip();
+     });
+
+    // Data Labels
+    g.selectAll(".val-label").data(rows).join("text")
+     .attr("x",d=>x(d.value)+5).attr("y",d=>y(d.label)+y.bandwidth()/2+4)
+     .style("font-size","11px").style("fill","#334155").style("font-weight","bold")
+     .text(d=>d.value.toLocaleString());
+
+  } else {
+    // แกน X & Y (Vertical)
+    g.append("g").attr("transform",`translate(0,${ih})`).call(d3.axisBottom(x)).selectAll("text").attr("transform","rotate(-35)").style("text-anchor","end");
+    g.append("g").call(d3.axisLeft(y).ticks(5));
+
+    // ชื่อแกน Y
+    svg.append("text").attr("transform","rotate(-90)").attr("x", -m.t - ih/2).attr("y", 16).attr("text-anchor","middle").style("font-size","12px").style("fill","#475569").text("จำนวน (ราย)");
+
+    // แท่งกราฟ + Hover
+    g.selectAll(".bar").data(rows).join("rect")
+     .attr("x",d=>x(d.label)).attr("y",d=>y(d.value))
+     .attr("width",x.bandwidth()).attr("height",d=>ih-y(d.value))
+     .attr("fill",(d,i)=>colorScale(i)).attr("rx", 3)
+     .style("cursor","pointer")
+     .on("mouseover", (event, d) => {
+        d3.select(event.currentTarget).style("opacity", 0.8);
+        const pct = ((d.value / totalVal) * 100).toFixed(1);
+        showTooltip(event, `<b>${d.label}:</b> ${d.value.toLocaleString()} ราย (${pct}%)`);
+     })
+     .on("mousemove", moveTooltip)
+     .on("mouseout", (event) => {
+        d3.select(event.currentTarget).style("opacity", 1);
+        hideTooltip();
+     });
+
+    // Data Labels
+    g.selectAll(".val-label").data(rows).join("text")
+     .attr("x",d=>x(d.label)+x.bandwidth()/2).attr("y",d=>y(d.value)-5)
+     .attr("text-anchor","middle").style("font-size","10px").style("fill","#334155").style("font-weight","bold")
+     .text(d=>d.value > 0 ? d.value.toLocaleString() : "");
+  }
+}
+
+// -------------------------------------------------------------
+// อัปเดตข้อมูลและแสดงผล
+// -------------------------------------------------------------
+function update(){
+  current=filtered(); 
+  document.querySelector("#total").textContent=current.length.toLocaleString();
+  
+  const ages=current.map(d=>d.Age).filter(Number.isFinite); 
+  document.querySelector("#avgAge").textContent=ages.length?d3.mean(ages).toFixed(1):"-";
+  
+  const p=counts(current,"จ.ที่เสียชีวิต")[0], v=counts(current,"Vehicle Merge Final")[0]; 
+  document.querySelector("#topProvince").textContent=p?.label||"-"; 
+  document.querySelector("#topVehicle").textContent=v?.label||"-";
+
+  drawLine(current);
+  drawDonut(current);
+  drawBars("vehicleChart",counts(current,"Vehicle Merge Final"),false);
+  drawBars("weekday",weekdays.map(label=>({label,value:current.filter(d=>d["วันในสัปดาห์"]===label).length})),false);
+  drawBars("provinceChart",counts(current,"จ.ที่เสียชีวิต"),true);
+
+  document.querySelector("#summary").innerHTML=`ข้อมูลที่เลือกมี <b>${current.length.toLocaleString()}</b> ราย อายุเฉลี่ย <b>${ages.length?d3.mean(ages).toFixed(1):"-"}</b> ปี จังหวัดที่พบมากที่สุดคือ <b>${p?.label||"-"}</b> และยานพาหนะที่พบมากที่สุดคือ <b>${v?.label||"-"}</b>`;
+}
+
+document.querySelector("#reset").onclick=()=>{
+  ["month","sex","province","vehicle"].forEach(id=>document.querySelector("#"+id).value="ทั้งหมด");
   update();
 };
 
-Papa.parse(CSV, {
-  download: true,
-  header: true,
-  skipEmptyLines: true,
-  complete: r => {
-    data = r.data.map(prep);
-    fill("month", months);
-    fill("sex", [...new Set(data.map(d => d.Sex))].filter(Boolean).sort((a, b) => a.localeCompare(b, "th")));
-    fill("province", [...new Set(data.map(d => d["จ.ที่เสียชีวิต"]))].filter(Boolean).sort((a, b) => a.localeCompare(b, "th")));
-    fill("vehicle", [...new Set(data.map(d => d["Vehicle Merge Final"]))].filter(Boolean).sort((a, b) => a.localeCompare(b, "th")));
-    update();
-  },
-  error: e => document.getElementById("summary").textContent = "โหลดข้อมูลไม่สำเร็จ: " + e.message
+d3.csv(CSV).then(rows=>{
+  data=rows.map(normalize);
+  options();
+  update();
+}).catch(e=>{
+  document.querySelector("#summary").textContent="โหลดข้อมูลไม่สำเร็จ: "+e.message;
 });
