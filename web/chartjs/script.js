@@ -1,4 +1,5 @@
-const CSV="https://raw.githubusercontent.com/Santhorn/DVT_Interactive_Data_Visualization_FINAL/main/data/cleaned/_2568_cleaned.csv"const months = ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
+const CSV="https://raw.githubusercontent.com/Santhorn/DVT_Interactive_Data_Visualization_FINAL/main/data/cleaned/_2568_cleaned.csv";
+const months = ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
 const weekdays = ["จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์","อาทิตย์"];
 
 let data = [], charts = {};
